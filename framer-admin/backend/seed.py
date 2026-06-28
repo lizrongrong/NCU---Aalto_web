@@ -74,8 +74,8 @@ SECTIONS_DATA = [
             {"key": "subtitle", "label": "副標題",   "type": "text",
              "zh": "國立中央大學 × 阿爾托大學 EMBA 在職學位學程",
              "en": "NCU × Aalto University EMBA Program"},
-            {"key": "cta_text", "label": "按鈕文字", "type": "text",
-             "zh": "立即申請",
+            {"key": "description", "label": "敘述文字", "type": "text",
+             "zh": "北歐創新 × 亞洲實戰 Leading with Global Vision",
              "en": "Apply Now"},
         ]
     },
