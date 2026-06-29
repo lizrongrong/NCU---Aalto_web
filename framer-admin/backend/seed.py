@@ -69,14 +69,14 @@ SECTIONS_DATA = [
         "page_slug": "home", "key": "hero", "name": "頂部橫幅 (Hero)", "type": "hero", "order": 1,
         "fields": [
             {"key": "title",    "label": "主標題",   "type": "text",
-             "zh": "培育未來領袖",
-             "en": "Cultivating Future Leaders"},
+             "zh": "國立中央大學 × 阿爾托大學 高階經營管理碩士在職學位學程",
+             "en": "National Central University × Aalto University Executive MBA Program"},
             {"key": "subtitle", "label": "副標題",   "type": "text",
-             "zh": "國立中央大學 × 阿爾托大學 EMBA 在職學位學程",
+             "zh": "NCU × Aalto Executive MBA Program",
              "en": "NCU × Aalto University EMBA Program"},
             {"key": "description", "label": "敘述文字", "type": "text",
              "zh": "北歐創新 × 亞洲實戰 Leading with Global Vision",
-             "en": "Apply Now"},
+             "en": "Nordic Innovation × Asia Action: Leading with Global Vision"},
         ]
     },
     {
@@ -85,9 +85,20 @@ SECTIONS_DATA = [
             {"key": "title",   "label": "區塊標題", "type": "text",
              "zh": "關於本計畫",
              "en": "About the Program"},
+            
+            # 副標題欄位
+            {"key": "subtitle", "label": "副標題", "type": "text",
+             "zh": "Lead with Nordic Vision.",
+             "en": "Lead with Nordic Vision."},
+            
             {"key": "content", "label": "介紹內文", "type": "textarea",
              "zh": "本學程結合國立中央大學與芬蘭阿爾托大學的師資與資源，培育具國際視野的高階管理人才。",
              "en": "This program combines faculty and resources from NCU and Aalto University to cultivate global business leaders."},
+            
+            # 圖片存放欄位
+            {"key": "image_url", "label": "計畫圖片", "type": "image",
+             "zh": "", 
+             "en": ""}
         ]
     },
     {

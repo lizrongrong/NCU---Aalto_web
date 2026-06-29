@@ -448,10 +448,20 @@
         oninput="markChanged('${field.field_key}', this.value)">${val}</textarea>
         <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">⚠️ JSON 格式，請確保語法正確</div>`;
     } else if (field.field_type === 'image') {
-      inputHtml = `<input type="text" id="field-${field.id}"
-        value="${val}" placeholder="圖片 URL"
-        oninput="markChanged('${field.field_key}', this.value)">
-        ${field.field_value ? `<img src="${field.field_value}" style="max-width:100%;max-height:120px;margin-top:8px;border-radius:6px;border:1px solid #e0e0e0;" onerror="this.style.display='none'">` : ''}`;
+      const fullImageUrl = val ? (val.startsWith('http') ? val : `${API_BASE}${val}`) : '';
+      
+      inputHtml = `
+        <div class="image-upload-wrapper">
+          <input type="hidden" id="field-${field.id}" value="${val}">
+          
+          <input type="file" accept="image/*" 
+            onchange="uploadImage(this, '${field.field_key}', 'field-${field.id}')" 
+            style="margin-bottom: 10px; display: block;">
+            
+          <img id="preview-${field.field_key}" src="${fullImageUrl}" 
+            style="max-width:100%; max-height:120px; margin-top:8px; border-radius:6px; border:1px solid #e0e0e0; display: ${val ? 'block' : 'none'};" 
+            onerror="this.style.display='none'">
+        </div>`;
     } else {
       inputHtml = `<input type="text" id="field-${field.id}"
         value="${val}" placeholder="請輸入${field.label || field.field_key}"
@@ -467,6 +477,49 @@
         ${inputHtml}
         ${field.hint ? `<div class="field-hint">💡 ${field.hint}</div>` : ''}
       </div>`;
+  }
+
+  // 處理圖片上傳的函數 (新增)
+  async function uploadImage(fileInput, fieldKey, inputId) {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    // 顯示上傳中的提示
+    showToast('⏳ 圖片上傳中...', '');
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      // 呼叫後端的上傳 API
+      const res = await fetch(`${API_BASE}/api/v1/upload`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const imageUrl = data.url;
+
+        // 1. 將後端給的新網址塞入隱藏的 input
+        document.getElementById(inputId).value = imageUrl;
+
+        // 2. 觸發系統原有的「有變更」機制 (重要！這樣右上角才會出現儲存按鈕)
+        markChanged(fieldKey, imageUrl);
+
+        // 3. 更新下方的預覽圖片
+        const imgPreview = document.getElementById(`preview-${fieldKey}`);
+        imgPreview.src = imageUrl.startsWith('http') ? imageUrl : `${API_BASE}${imageUrl}`;
+        imgPreview.style.display = 'block';
+
+        showToast('✅ 圖片上傳成功！請記得按下方儲存。', 'success');
+      } else {
+        showToast('❌ 上傳失敗，請檢查後端', 'error');
+      }
+    } catch(e) {
+      showToast('❌ 無法連線到上傳伺服器', 'error');
+      console.error(e);
+    }
   }
 
   /** 標記有變更 */

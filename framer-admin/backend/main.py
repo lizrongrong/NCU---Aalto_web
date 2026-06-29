@@ -16,6 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
+from fastapi import UploadFile, File
+import shutil
+import uuid
 
 # 匯入資料庫設定
 from database import engine, Base
@@ -118,6 +121,30 @@ async def root():
     """根路徑，重導向到後台登入頁"""
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/admin/index.html")
+
+# ─────────────────────────────────────────
+# 掛載上傳的圖片資料夾 (讓前端可以讀取圖片)
+# ─────────────────────────────────────────
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# ─────────────────────────────────────────
+# 圖片上傳 API 端點
+# ─────────────────────────────────────────
+@app.post("/api/v1/upload", tags=["上傳"])
+async def upload_image(file: UploadFile = File(...)):
+    """接收前台或後台上傳的圖片，並回傳存取網址"""
+    # 幫圖片產生一個獨一無二的檔名 (UUID)，避免檔名重複導致覆蓋
+    file_extension = file.filename.split(".")[-1]
+    unique_filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = f"uploads/{unique_filename}"
+    
+    # 將檔案寫入本機的 uploads 資料夾
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    # 回傳圖片的路徑，讓資料庫和 Framer 知道去哪裡抓圖片
+    return {"url": f"/uploads/{unique_filename}"}
 
 # ─────────────────────────────────────────
 # 健康檢查端點（部署平台用）
