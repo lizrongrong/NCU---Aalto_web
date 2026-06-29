@@ -368,25 +368,33 @@
   }
 
   /** 渲染左側區塊列表 */
-  function renderSectionList(sections) {
+ function renderSectionList(sections) {
     const list = document.getElementById('sectionList');
     if (!sections?.length) {
       list.innerHTML = '<div style="color:var(--color-text-muted); font-size:13px; padding:8px;">尚無區塊，點右上角新增</div>';
       return;
     }
-    list.innerHTML = sections.sort((a,b) => a.display_order - b.display_order).map(sec => `
-      <div class="section-item" id="sec-item-${sec.id}"
+    list.innerHTML = sections.sort((a,b) => a.display_order - b.display_order).map(sec => {
+      // 判斷目前的狀態
+      const isActive = sec.is_active !== false; 
+      const btnClass = isActive ? 'btn-secondary' : 'btn-success'; // 啟用時顯示灰色停用鈕，停用時顯示綠色啟用鈕
+      const btnText = isActive ? '停用' : '啟用';
+      const itemOpacity = isActive ? '1' : '0.5'; // 停用時讓整個區塊變半透明
+      const statusText = isActive ? '' : '<span style="color:red; font-size:12px; margin-left:8px;">(已停用)</span>';
+
+      return `
+      <div class="section-item" id="sec-item-${sec.id}" style="opacity: ${itemOpacity};"
            onclick='selectSection(${JSON.stringify(sec)})'>
         <div>
-          <div class="section-item-name">${sec.name}</div>
+          <div class="section-item-name">${sec.name} ${statusText}</div>
           <div class="section-item-type">${sec.section_type} · ${sec.section_key}</div>
         </div>
-        <button class="btn btn-danger"
-          onclick="event.stopPropagation(); deleteSection(${sec.id}, '${sec.name.replace(/'/g, "\\'")}')">
-          刪除
+        <button class="btn ${btnClass}" style="padding: 4px 12px; font-size: 12px;"
+          onclick="event.stopPropagation(); toggleSectionStatus(${sec.id}, ${!isActive}, '${sec.name}')">
+          ${btnText}
         </button>
       </div>
-    `).join('');
+    `}).join('');
   }
 
   /** 選取區塊，顯示編輯欄位 */
@@ -619,6 +627,37 @@
     if (sec) { renderFieldEditor(sec); updateSaveStatus(false); }
   }
 
+  /** 切換區塊的啟用/停用狀態 */
+  async function toggleSectionStatus(sectionId, newStatus) {
+    if (DEMO_MODE) {
+      showToast(`狀態已切換為：${newStatus ? '啟用' : '停用'}（展示模式）`, 'success');
+      return;
+    }
+
+    const token = localStorage.getItem('admin_token');
+    try {
+      // 假設你的後端有這個 PATCH 路由，若沒有，請參考第二步在後端補上
+      const res = await fetch(`${API_BASE}/api/v1/sections/${sectionId}/status`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ is_active: newStatus })
+      });
+      
+      if (res.ok) {
+        showToast(`✅ 區塊已${newStatus ? '啟用' : '停用'}`, 'success');
+        await loadPageData(); // 重新載入左側列表
+      } else { 
+        showToast('❌ 狀態切換失敗', 'error');
+      }
+    } catch(e) { 
+      showToast('❌ 無法連線到後端', 'error'); 
+    }
+  }
+  
+  /** 刪除區塊 */
   async function deleteSection(sectionId, sectionName) {
     if (!confirm(`確定刪除「${sectionName}」？此操作無法復原。`)) return;
 

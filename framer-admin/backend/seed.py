@@ -77,6 +77,9 @@ SECTIONS_DATA = [
             {"key": "description", "label": "敘述文字", "type": "text",
              "zh": "北歐創新 × 亞洲實戰 Leading with Global Vision",
              "en": "Nordic Innovation × Asia Action: Leading with Global Vision"},
+             {"key": "image_url", "label": "背景圖片", "type": "image",
+             "zh": "",
+             "en": ""}
         ]
     },
     {

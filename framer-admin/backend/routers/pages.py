@@ -10,6 +10,7 @@ API 設計原則：
 - DELETE ：刪除（需要登入）
 """
 
+from pydantic import BaseModel
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
@@ -342,37 +343,21 @@ def get_section_content(
     locale: str = Query("zh-TW", description="語系"),
     db: Session = Depends(get_db)
 ):
-    """
-    ⭐ Framer Code Component 最常用的端點！
-    直接用頁面 slug + 區塊 key + locale 取得內容，
-    回傳一個簡單的 key-value 物件，方便前端使用。
-
-    **Framer Code Component 範例：**
-    ```javascript
-    const data = await fetch(
-      'http://localhost:8000/api/v1/content/home/alumni?locale=zh-TW'
-    ).then(r => r.json());
-
-    // 直接用 data.title, data.subtitle 等
-    console.log(data.fields.title);  // "校友分享"
-    ```
-    """
-    # 查找頁面
+    # 查找頁面 (如果整個頁面被停用，還是回傳 404)
     page = db.query(Page).filter(Page.slug == slug, Page.is_active == True).first()
     if not page:
         raise HTTPException(status_code=404, detail=f"找不到頁面：{slug}")
 
-    # 查找區塊
+    # 查找區塊 (⚠️ 注意：這裡拿掉 is_active==True 的過濾，讓 Framer 也能讀到停用的區塊)
     section = db.query(Section).filter(
         Section.page_id == page.id,
-        Section.section_key == section_key,
-        Section.is_active == True
+        Section.section_key == section_key
     ).first()
 
     if not section:
         raise HTTPException(status_code=404, detail=f"找不到區塊：{section_key}")
 
-    # 取得該語系的所有欄位，整理成 key-value 格式
+    # 取得該語系的所有欄位
     fields = db.query(ContentField).filter(
         ContentField.section_id == section.id,
         ContentField.locale == locale
@@ -385,6 +370,7 @@ def get_section_content(
         "section": section_key,
         "locale": locale,
         "section_name": section.name,
+        "is_active": section.is_active,  # 👈 關鍵：把狀態傳給 Framer！
         "fields": fields_dict
     }
 
@@ -459,3 +445,26 @@ def get_page_tree(
             roots.append(page)
 
     return roots
+
+# ════════════════════════════════════════
+# 🔘 Section 狀態切換 API
+# ════════════════════════════════════════
+class SectionStatusUpdate(BaseModel):
+    is_active: bool
+
+@router.patch("/sections/{section_id}/status", response_model=SectionOut, summary="切換區塊啟用狀態（需要登入）")
+def update_section_status(
+    section_id: int,
+    status_data: SectionStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    """專門用來切換區塊的停用/啟用狀態（軟刪除）"""
+    section = db.query(Section).filter(Section.id == section_id).first()
+    if not section:
+        raise HTTPException(status_code=404, detail=f"找不到區塊 ID：{section_id}")
+
+    section.is_active = status_data.is_active
+    db.commit()
+    db.refresh(section)
+    return section
