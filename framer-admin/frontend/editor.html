@@ -289,6 +289,7 @@
   let currentSectionId = null;
   let currentLocale = 'zh-TW';
   let pendingChanges = {};
+  let listFieldStates = {};
   let hasUnsavedChanges = false;
 
   const urlParams = new URLSearchParams(window.location.search);
@@ -403,6 +404,7 @@
 
     currentSectionId = section.id;
     pendingChanges = {};
+    listFieldStates = {};
     hasUnsavedChanges = false;
 
     document.querySelectorAll('.section-item').forEach(el => el.classList.remove('active'));
@@ -437,15 +439,38 @@
     }
 
     body.innerHTML = fields.map(renderField).join('');
+
+    setTimeout(() => {
+      fields.forEach(f => {
+        if (['list', 'global_list'].includes(f.field_type)) {
+          renderListItems(f.field_key);
+        }
+      });
+    }, 0);
+
     window._currentSection = section;
   }
 
   /** 渲染單一欄位 */
   function renderField(field) {
     let inputHtml;
-    const val = escapeHtml(field.field_value || '');
+    const val = escapeHtml(field.field_value || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-    if (['textarea','richtext'].includes(field.field_type)) {
+    if (['list', 'global_list'].includes(field.field_type)) {
+      try {
+        listFieldStates[field.field_key] = JSON.parse(field.field_value || '[]');
+      } catch(e) {
+        listFieldStates[field.field_key] = [];
+      }
+      
+      inputHtml = `
+        <div id="list-container-${field.field_key}" style="background:#f8f9fa; padding:16px; border-radius:8px; border:1px solid #e9ecef; max-height: 600px; overflow-y: auto;">
+          </div>
+        <button type="button" class="btn btn-primary" style="margin-top:12px; font-size:13px;" onclick="addListItem('${field.field_key}')">
+          ➕ 新增校友卡片
+        </button>`;
+
+    } else if (['textarea','richtext'].includes(field.field_type)) {
       inputHtml = `<textarea id="field-${field.id}" rows="4"
         placeholder="請輸入 ${field.label || field.field_key}"
         oninput="markChanged('${field.field_key}', this.value)">${val}</textarea>`;
@@ -726,6 +751,117 @@
         alert(`新增失敗：${err.detail}`);
       }
     } catch(e) { showToast('無法連線到後端', 'error'); }
+  }
+
+  // ════════════════════════════════════════
+  // 🔘 列表 (List) 型態專用管理函數
+  // ════════════════════════════════════════
+
+  /** 渲染卡片清單畫面 */
+  function renderListItems(fieldKey) {
+    const container = document.getElementById(`list-container-${fieldKey}`);
+    if (!container) return;
+    const items = listFieldStates[fieldKey] || [];
+
+    if (items.length === 0) {
+      container.innerHTML = '<div style="text-align:center; color:#adb5bd; padding:20px;">目前尚無卡片，請點擊下方按鈕新增</div>';
+      return;
+    }
+
+    container.innerHTML = items.map((item, index) => {
+      // 避免 XSS 及破壞 HTML
+      const escape = (str) => escapeHtml(str || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      const imgUrl = item.image_url ? (item.image_url.startsWith('http') ? item.image_url : `${API_BASE}${item.image_url}`) : '';
+
+      return `
+      <div style="background:#fff; border:1px solid #ced4da; padding:16px; margin-bottom:12px; border-radius:6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div style="display:flex; justify-content:space-between; margin-bottom:12px; border-bottom:1px solid #eee; padding-bottom:8px;">
+          <h4 style="margin:0; color:var(--color-primary); font-size:14px;">🎓 卡片 #${index + 1}</h4>
+          <button class="btn btn-danger" style="padding:4px 8px; font-size:12px;" onclick="removeListItem('${fieldKey}', ${index})">🗑️ 刪除</button>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom:12px;">
+          <div>
+            <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">標題 (校友姓名與學經歷)</label>
+            <input type="text" value="${escape(item.title)}" oninput="updateListItem('${fieldKey}', ${index}, 'title', this.value)" style="width:100%;">
+          </div>
+          <div>
+            <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">狀態</label>
+            <select onchange="updateListItem('${fieldKey}', ${index}, 'is_active', this.value === 'true')" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;">
+              <option value="true" ${item.is_active !== false ? 'selected' : ''}>🟢 顯示</option>
+              <option value="false" ${item.is_active === false ? 'selected' : ''}>🔴 隱藏</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom:12px;">
+          <div>
+            <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">日期</label>
+            <input type="date" value="${escape(item.date)}" onchange="updateListItem('${fieldKey}', ${index}, 'date', this.value)" style="width:100%;">
+          </div>
+          <div>
+            <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">照片</label>
+            <input type="file" accept="image/*" onchange="uploadListImage(this, '${fieldKey}', ${index})" style="margin-bottom:8px; font-size:12px;">
+            ${imgUrl ? `<img src="${imgUrl}" style="max-height:60px; border-radius:4px; border:1px solid #ccc; display:block;">` : ''}
+          </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">內容大綱 (Summary)</label>
+          <textarea rows="2" oninput="updateListItem('${fieldKey}', ${index}, 'summary', this.value)" style="width:100%;">${escape(item.summary)}</textarea>
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">完整內容 (Content) - 後續可升級為富文本</label>
+          <textarea rows="5" oninput="updateListItem('${fieldKey}', ${index}, 'content', this.value)" style="width:100%; font-family:sans-serif;">${escape(item.content)}</textarea>
+        </div>
+      </div>
+    `}).join('');
+  }
+
+  /** 新增一張空卡片 */
+  function addListItem(fieldKey) {
+    if (!listFieldStates[fieldKey]) listFieldStates[fieldKey] = [];
+    listFieldStates[fieldKey].push({ title: '', summary: '', image_url: '', content: '', date: '', is_active: true });
+    saveListToPending(fieldKey);
+    renderListItems(fieldKey);
+  }
+
+  /** 刪除一張卡片 */
+  function removeListItem(fieldKey, index) {
+    if(!confirm('確定刪除此卡片？（需按下方儲存才會生效）')) return;
+    listFieldStates[fieldKey].splice(index, 1);
+    saveListToPending(fieldKey);
+    renderListItems(fieldKey);
+  }
+
+  /** 更新卡片內單一欄位的值 */
+  function updateListItem(fieldKey, index, key, value) {
+    listFieldStates[fieldKey][index][key] = value;
+    saveListToPending(fieldKey);
+  }
+
+  /** 將陣列轉為 JSON 字串並觸發儲存機制 */
+  function saveListToPending(fieldKey) {
+    markChanged(fieldKey, JSON.stringify(listFieldStates[fieldKey]));
+  }
+
+  /** 清單專用的圖片上傳 */
+  async function uploadListImage(fileInput, fieldKey, index) {
+    const file = fileInput.files[0];
+    if (!file) return;
+    showToast('⏳ 圖片上傳中...', '');
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/upload`, { method: 'POST', body: formData });
+      if (res.ok) {
+        const data = await res.json();
+        updateListItem(fieldKey, index, 'image_url', data.url);
+        renderListItems(fieldKey); // 重新渲染以顯示新照片
+        showToast('✅ 圖片上傳成功！', 'success');
+      } else { showToast('❌ 上傳失敗', 'error'); }
+    } catch(e) { showToast('❌ 無法連線到上傳伺服器', 'error'); }
   }
 
   // ─── 工具函數 ───

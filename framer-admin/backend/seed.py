@@ -104,41 +104,29 @@ SECTIONS_DATA = [
              "en": ""}
         ]
     },
-    {
-        "page_slug": "home", "key": "stats", "name": "數據統計", "type": "card", "order": 3,
-        "fields": [
-            {"key": "stat_1_number", "label": "數據1 數字", "type": "text", "zh": "300+",    "en": "300+"},
-            {"key": "stat_1_label",  "label": "數據1 說明", "type": "text", "zh": "畢業校友", "en": "Alumni"},
-            {"key": "stat_2_number", "label": "數據2 數字", "type": "text", "zh": "15+",     "en": "15+"},
-            {"key": "stat_2_label",  "label": "數據2 說明", "type": "text", "zh": "年辦學歷史","en": "Years History"},
-            {"key": "stat_3_number", "label": "數據3 數字", "type": "text", "zh": "Top 1%",  "en": "Top 1%"},
-            {"key": "stat_3_label",  "label": "數據3 說明", "type": "text", "zh": "全球排名", "en": "Global Ranking"},
-        ]
-    },
-
     # ════════════════════
-    # 校友分享 (alumni)
+    # 校友分享 (alumni_sharing)
     # ════════════════════
     {
-        "page_slug": "alumni", "key": "alumni-hero", "name": "校友分享 頂部", "type": "hero", "order": 1,
+        "page_slug": "alumni", # 校友分享頁編輯
+        "key": "alumni_sharing", 
+        "name": "校友分享", 
+        "type": "list", # 定義為列表清單
+        "order": 1,
         "fields": [
-            {"key": "title",    "label": "主標題", "type": "text",
-             "zh": "校友分享",
-             "en": "Alumni Stories"},
-            {"key": "subtitle", "label": "副標題", "type": "text",
-             "zh": "聆聽真實的聲音，感受改變的力量",
-             "en": "Real voices, real transformation"},
-        ]
-    },
-    {
-        "page_slug": "alumni", "key": "alumni-list", "name": "校友名單與故事", "type": "json", "order": 2,
-        "fields": [
-            {"key": "section_title", "label": "區塊標題", "type": "text",
-             "zh": "他們的故事",
-             "en": "Their Stories"},
-            {"key": "items", "label": "校友列表（JSON）", "type": "json",
-             "zh": '[{"name":"王小明","year":"2020","company":"台積電","quote":"這個學程改變了我的視野"},{"name":"李小華","year":"2021","company":"鴻海","quote":"結合芬蘭與台灣的學習體驗無可取代"}]',
-             "en": '[{"name":"Wang Xiaoming","year":"2020","company":"TSMC","quote":"This program changed my perspective"},{"name":"Li Xiaohua","year":"2021","company":"Foxconn","quote":"The Finland-Taiwan experience is irreplaceable"}]'},
+            {
+                "key": "alumni_list", 
+                "label": "校友分享清單", 
+                "type": "list", # 巢狀列表結構
+                "items": [
+                    {"key": "title", "label": "標題", "type": "text"},
+                    {"key": "summary", "label": "內容大綱", "type": "text"},
+                    {"key": "is_active", "label": "狀態", "type": "boolean"},
+                    {"key": "image_url", "label": "照片", "type": "image"},
+                    {"key": "date", "label": "日期", "type": "date"},
+                    {"key": "content", "label": "完整內容", "type": "richtext"}
+                ]
+            }
         ]
     },
 
@@ -266,7 +254,19 @@ def seed_database():
 
             # 建立欄位（zh-TW 和 en-US 各一份）
             for field_data in sec_data.get("fields", []):
-                for locale, value in [("zh-TW", field_data["zh"]), ("en-US", field_data["en"])]:
+                
+                # 👇 1. 判斷欄位類型，給予正確的初始值
+                if field_data.get("type") in ["list", "global_list"]:
+                    # 如果是清單類型，初始值給一個空的 JSON 陣列
+                    zh_value = "[]"
+                    en_value = "[]"
+                else:
+                    # 如果是普通欄位，安全地取得 zh 和 en 的值（找不到就給空字串）
+                    zh_value = field_data.get("zh", "")
+                    en_value = field_data.get("en", "")
+
+                # 👇 2. 將整理好的值帶入原本的迴圈
+                for locale, value in [("zh-TW", zh_value), ("en-US", en_value)]:
                     existing_field = db.query(ContentField).filter(
                         ContentField.section_id == section.id,
                         ContentField.field_key == field_data["key"],
