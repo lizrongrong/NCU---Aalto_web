@@ -302,6 +302,7 @@
   let pendingChanges = {};
   let listFieldStates = {};
   let hasUnsavedChanges = false;
+  let isRendering = false;
 
   const urlParams = new URLSearchParams(window.location.search);
   currentPageSlug = urlParams.get('page') || 'home';
@@ -345,38 +346,57 @@
   }
 
   async function loadPageData() {
-    let pageData;
+    // 🔒【上鎖】：開始載入與填入資料，忽略所有變更監聽
+    isRendering = true;
+    
+    try {
+        let pageData;
 
-    if (DEMO_MODE) {
-      pageData = getMockPage(currentPageSlug);
-    } else {
-      const token = localStorage.getItem('admin_token');
-      try {
-        const res = await fetch(`${API_BASE}/api/v1/pages/${currentPageSlug}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.status === 404) {
-          document.getElementById('pageTitle').textContent = `找不到頁面：${currentPageSlug}`;
-          return;
+        if (DEMO_MODE) {
+            pageData = getMockPage(currentPageSlug);
+        } else {
+            const token = localStorage.getItem('admin_token');
+            try {
+                const res = await fetch(`${API_BASE}/api/v1/pages/${currentPageSlug}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.status === 404) {
+                    document.getElementById('pageTitle').textContent = `找不到頁面：${currentPageSlug}`;
+                    return; // 這裡 return 會直接跳到 finally 解鎖
+                }
+                pageData = await res.json();
+            } catch(e) {
+                showToast('載入失敗，請確認後端服務已啟動', 'error');
+                return; // 這裡 return 也會直接跳到 finally 解鎖
+            }
         }
-        pageData = await res.json();
-      } catch(e) {
-        showToast('載入失敗，請確認後端服務已啟動', 'error');
-        return;
-      }
+
+        // ==========================================
+        // 以下這些「更新畫面」的動作，必須包在 try 裡面！
+        // 這樣才能確保它們觸發的 onchange 事件會被 isRendering 擋下來
+        // ==========================================
+        window._pageData = pageData;
+        document.getElementById('pageTitle').textContent = `✏️ ${pageData.title}`;
+        document.getElementById('breadcrumbPage').textContent = pageData.title;
+        document.getElementById('pageFullTitle').textContent = pageData.title;
+        document.title = `${pageData.title} — NCU × Aalto EMBA 後台`;
+        
+        document.getElementById('pageStatus').innerHTML = pageData.is_active
+            ? '<span class="badge badge-active">✓ 已啟用</span>'
+            : '<span class="badge badge-inactive">✗ 已停用</span>';
+
+        // 重新渲染左側選單與右側內容
+        renderSectionList(pageData.sections);
+        if (pageData.sections?.length > 0) {
+            selectSection(pageData.sections[0]);
+        }
+
+    } finally {
+        // 🔓【解鎖】：不管上面成功還是失敗、有沒有 return，最後一定會執行這裡
+        setTimeout(() => {
+            isRendering = false;
+        }, 50);
     }
-
-    window._pageData = pageData;
-    document.getElementById('pageTitle').textContent = `✏️ ${pageData.title}`;
-    document.getElementById('breadcrumbPage').textContent = pageData.title;
-    document.getElementById('pageFullTitle').textContent = pageData.title;
-    document.title = `${pageData.title} — NCU × Aalto EMBA 後台`;
-    document.getElementById('pageStatus').innerHTML = pageData.is_active
-      ? '<span class="badge badge-active">✓ 已啟用</span>'
-      : '<span class="badge badge-inactive">✗ 已停用</span>';
-
-    renderSectionList(pageData.sections);
-    if (pageData.sections?.length > 0) selectSection(pageData.sections[0]);
   }
 
   /** 渲染左側區塊列表 */
@@ -570,6 +590,7 @@
 
   /** 標記有變更 */
   function markChanged(fieldKey, value) {
+    if (isRendering) return;
     pendingChanges[fieldKey] = value;
     hasUnsavedChanges = true;
     updateSaveStatus(true);
