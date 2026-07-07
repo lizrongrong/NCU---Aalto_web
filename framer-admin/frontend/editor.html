@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>頁面編輯器 — NCU × Aalto EMBA 後台管理</title>
   <link rel="stylesheet" href="css/admin.css">
+  <!-- 引入 Quill.js 富文本編輯器主題與核心 -->
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+  <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
   <style>
     .editor-layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; align-items: start; }
     .section-panel { position: sticky; top: 88px; }
@@ -30,7 +33,7 @@
       <a href="editor.html?page=about-aalto-emba" class="nav-item sub">關於 Aalto EMBA</a>
       <a href="editor.html?page=about-aalto"      class="nav-item sub">關於阿爾托大學</a>
       <a href="editor.html?page=about-ncu"        class="nav-item sub">關於中央大學</a>
-      <a href="editor.html?page=learning"         class="nav-item" id="nav-learning"><span class="nav-icon">📖</span> 學習資訊</a>
+      <a href="editor.html?page=learning"         class="nav-item" id="nav-learning"><span class="nav-icon">📖</span> 學習回饋</a>
       <a href="editor.html?page=alumni"           class="nav-item sub">校友分享</a>
       <a href="editor.html?page=events"           class="nav-item sub">活動訊息</a>
       <a href="editor.html?page=courses"          class="nav-item" id="nav-courses"><span class="nav-icon">📚</span> 課程資訊</a>
@@ -189,6 +192,14 @@
 
 <script>
   const API_BASE = 'http://localhost:8000';
+  // 定義富文本編輯器的工具列 (對應你的截圖需求)
+  const quillToolbarOptions = [
+    [{ 'header': [1, 2, 3, false] }], // Paragraph 下拉選單 (H1, H2, H3, 一般段落)
+    ['link', 'bold', 'italic', 'blockquote'], // 連結、粗體、斜體、引言 (對應 66)
+    [{ 'list': 'bullet' }, { 'list': 'ordered' }, 'code-block'], // 無符號清單、數字清單、程式碼區塊
+    ['image', 'video'], // 插入圖片與影片 (對應 Insert 選單)
+    ['clean'] // 清除格式
+  ];
 
   // ─────────────────────────────────────────
   // 展示模式：不需後端即可瀏覽介面
@@ -369,7 +380,7 @@
   }
 
   /** 渲染左側區塊列表 */
- function renderSectionList(sections) {
+  function renderSectionList(sections) {
     const list = document.getElementById('sectionList');
     if (!sections?.length) {
       list.innerHTML = '<div style="color:var(--color-text-muted); font-size:13px; padding:8px;">尚無區塊，點右上角新增</div>';
@@ -378,14 +389,15 @@
     list.innerHTML = sections.sort((a,b) => a.display_order - b.display_order).map(sec => {
       // 判斷目前的狀態
       const isActive = sec.is_active !== false; 
-      const btnClass = isActive ? 'btn-secondary' : 'btn-success'; // 啟用時顯示灰色停用鈕，停用時顯示綠色啟用鈕
+      const btnClass = isActive ? 'btn-secondary' : 'btn-success';
       const btnText = isActive ? '停用' : '啟用';
-      const itemOpacity = isActive ? '1' : '0.5'; // 停用時讓整個區塊變半透明
+      const itemOpacity = isActive ? '1' : '0.5';
       const statusText = isActive ? '' : '<span style="color:red; font-size:12px; margin-left:8px;">(已停用)</span>';
 
+      // 👇 關鍵修復：這裡原本塞了整包 JSON，現在只傳乾淨的 sec.id
       return `
       <div class="section-item" id="sec-item-${sec.id}" style="opacity: ${itemOpacity};"
-           onclick='selectSection(${JSON.stringify(sec)})'>
+            onclick="selectSectionById(${sec.id})">
         <div>
           <div class="section-item-name">${sec.name} ${statusText}</div>
           <div class="section-item-type">${sec.section_type} · ${sec.section_key}</div>
@@ -454,6 +466,7 @@
   /** 渲染單一欄位 */
   function renderField(field) {
     let inputHtml;
+    // 強化 escape 避免引號破壞 HTML 屬性
     const val = escapeHtml(field.field_value || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
     if (['list', 'global_list'].includes(field.field_type)) {
@@ -757,7 +770,29 @@
   // 🔘 列表 (List) 型態專用管理函數
   // ════════════════════════════════════════
 
-  /** 渲染卡片清單畫面 */
+  /** 渲染卡片清單畫面 (包含富文本編輯器) */
+  function toggleCard(fieldKey, index) {
+    const body = document.getElementById(`card-body-${fieldKey}-${index}`);
+    const icon = document.getElementById(`card-icon-${fieldKey}-${index}`);
+    if (body.style.display === 'none') {
+      body.style.display = 'block';
+      icon.textContent = '▼';
+    } else {
+      body.style.display = 'none';
+      icon.textContent = '▶';
+    }
+  }
+
+  /** 即時更新摺疊面板上的標題 */
+  function updateCardTitle(fieldKey, index, newTitle) {
+    const icon = document.getElementById(`card-icon-${fieldKey}-${index}`).textContent;
+    const header = document.querySelector(`#card-body-${fieldKey}-${index}`).previousElementSibling.querySelector('h4');
+    if(header) {
+      header.innerHTML = `<span id="card-icon-${fieldKey}-${index}" style="display:inline-block; width:20px;">${icon}</span> 🎓 ${newTitle || `新卡片 #${index + 1}`}`;
+    }
+  }
+
+  /** 渲染卡片清單畫面 (升級版：手風琴摺疊介面) */
   function renderListItems(fieldKey) {
     const container = document.getElementById(`list-container-${fieldKey}`);
     if (!container) return;
@@ -769,54 +804,88 @@
     }
 
     container.innerHTML = items.map((item, index) => {
-      // 避免 XSS 及破壞 HTML
       const escape = (str) => escapeHtml(str || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       const imgUrl = item.image_url ? (item.image_url.startsWith('http') ? item.image_url : `${API_BASE}${item.image_url}`) : '';
+      
+      // 預設邏輯：第一張卡片展開，其餘摺疊
+      const isExpanded = index === 0;
+      const displayStyle = isExpanded ? 'block' : 'none';
+      const iconText = isExpanded ? '▼' : '▶';
 
       return `
-      <div style="background:#fff; border:1px solid #ced4da; padding:16px; margin-bottom:12px; border-radius:6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-        <div style="display:flex; justify-content:space-between; margin-bottom:12px; border-bottom:1px solid #eee; padding-bottom:8px;">
-          <h4 style="margin:0; color:var(--color-primary); font-size:14px;">🎓 卡片 #${index + 1}</h4>
-          <button class="btn btn-danger" style="padding:4px 8px; font-size:12px;" onclick="removeListItem('${fieldKey}', ${index})">🗑️ 刪除</button>
+      <div style="background:#fff; border:1px solid #ced4da; margin-bottom:12px; border-radius:6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:#f8f9fa; border-radius:6px; cursor:pointer;" onclick="toggleCard('${fieldKey}', ${index})">
+          <h4 style="margin:0; color:var(--color-primary); font-size:14px; user-select:none;">
+            <span id="card-icon-${fieldKey}-${index}" style="display:inline-block; width:20px;">${iconText}</span>
+            🎓 ${item.title || `新卡片 #${index + 1}`}
+          </h4>
+          <button class="btn btn-danger" style="padding:4px 8px; font-size:12px;" onclick="event.stopPropagation(); removeListItem('${fieldKey}', ${index})">刪除</button>
         </div>
 
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom:12px;">
-          <div>
-            <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">標題 (校友姓名與學經歷)</label>
-            <input type="text" value="${escape(item.title)}" oninput="updateListItem('${fieldKey}', ${index}, 'title', this.value)" style="width:100%;">
+        <div id="card-body-${fieldKey}-${index}" style="padding:16px; border-top:1px solid #eee; display:${displayStyle};">
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom:12px;">
+            <div>
+              <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">標題</label>
+              <input type="text" value="${escape(item.title)}" oninput="updateListItem('${fieldKey}', ${index}, 'title', this.value); updateCardTitle('${fieldKey}', ${index}, this.value)" style="width:100%;">
+            </div>
+            <div>
+              <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">狀態</label>
+              <select onchange="updateListItem('${fieldKey}', ${index}, 'is_active', this.value === 'true')" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;">
+                <option value="true" ${item.is_active !== false ? 'selected' : ''}>🟢 顯示</option>
+                <option value="false" ${item.is_active === false ? 'selected' : ''}>🔴 隱藏</option>
+              </select>
+            </div>
           </div>
-          <div>
-            <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">狀態</label>
-            <select onchange="updateListItem('${fieldKey}', ${index}, 'is_active', this.value === 'true')" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;">
-              <option value="true" ${item.is_active !== false ? 'selected' : ''}>🟢 顯示</option>
-              <option value="false" ${item.is_active === false ? 'selected' : ''}>🔴 隱藏</option>
-            </select>
-          </div>
-        </div>
 
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom:12px;">
-          <div>
-            <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">日期</label>
-            <input type="date" value="${escape(item.date)}" onchange="updateListItem('${fieldKey}', ${index}, 'date', this.value)" style="width:100%;">
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom:12px;">
+            <div>
+              <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">日期</label>
+              <input type="date" value="${escape(item.date)}" onchange="updateListItem('${fieldKey}', ${index}, 'date', this.value)" style="width:100%;">
+            </div>
+            <div>
+              <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">卡片封面照</label>
+              <input type="file" accept="image/*" onchange="uploadListImage(this, '${fieldKey}', ${index})" style="margin-bottom:8px; font-size:12px;">
+              ${imgUrl ? `<img src="${imgUrl}" style="max-height:60px; border-radius:4px; border:1px solid #ccc; display:block;">` : ''}
+            </div>
           </div>
-          <div>
-            <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">照片</label>
-            <input type="file" accept="image/*" onchange="uploadListImage(this, '${fieldKey}', ${index})" style="margin-bottom:8px; font-size:12px;">
-            ${imgUrl ? `<img src="${imgUrl}" style="max-height:60px; border-radius:4px; border:1px solid #ccc; display:block;">` : ''}
+
+          <div style="margin-bottom:12px;">
+            <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">內容大綱 (Summary)</label>
+            <textarea rows="2" oninput="updateListItem('${fieldKey}', ${index}, 'summary', this.value)" style="width:100%;">${escape(item.summary)}</textarea>
           </div>
-        </div>
 
-        <div style="margin-bottom:12px;">
-          <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">內容大綱 (Summary)</label>
-          <textarea rows="2" oninput="updateListItem('${fieldKey}', ${index}, 'summary', this.value)" style="width:100%;">${escape(item.summary)}</textarea>
-        </div>
-
-        <div>
-          <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">完整內容 (Content) - 後續可升級為富文本</label>
-          <textarea rows="5" oninput="updateListItem('${fieldKey}', ${index}, 'content', this.value)" style="width:100%; font-family:sans-serif;">${escape(item.content)}</textarea>
+          <div style="margin-top: 16px;">
+            <label style="font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">完整內容 (Content)</label>
+            <div id="quill-editor-${fieldKey}-${index}" style="height: 250px; background: #fff; font-family: sans-serif;"></div>
+          </div>
         </div>
       </div>
     `}).join('');
+
+    // 啟動 Quill 編輯器
+    setTimeout(() => {
+      items.forEach((item, index) => {
+        const editorElement = document.getElementById(`quill-editor-${fieldKey}-${index}`);
+        if (editorElement && !editorElement.classList.contains('ql-container')) {
+          const quill = new Quill(editorElement, {
+            theme: 'snow',
+            modules: { 
+              toolbar: {
+                container: quillToolbarOptions,
+                handlers: { 'image': function() { quillImageHandler(this.quill); } }
+              }
+            },
+            placeholder: '在此輸入校友訪談的完整故事...'
+          });
+
+          if (item.content) { quill.root.innerHTML = item.content; }
+          quill.on('text-change', function() {
+            updateListItem(fieldKey, index, 'content', quill.root.innerHTML);
+          });
+        }
+      });
+    }, 0);
   }
 
   /** 新增一張空卡片 */
